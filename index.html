@@ -1,0 +1,352 @@
+<html><head><title></title>
+
+<script type="text/javascript">
+var width=10;
+var height=10;
+
+var map;
+var positionX;
+var positionY;
+
+var WUMPUS = "w";
+var GOLD = "g";
+var PIT = "p";
+var STENCH = "s";
+var GLITTER = "l";
+var BREEZE = "b";
+
+var gameOver = false;
+
+var startRules = "";
+var wumpusRules;
+var facts;
+
+var god = false;
+var walk;
+
+function init() {
+	gameOver = false;
+	map = new Array(height);
+	walk = new Array(height);
+	for (var y=0; y<height; y++) {
+		walk[y] = new Array(width);
+	}
+	for (var y=0; y<height; y++) {
+		for (var x=0; x<width; x++) {
+			walk[y][x] = false;
+		}
+	}
+	
+	
+	facts = "";
+
+	for (i=1; i<=width; i++) {
+		for (j=1; j<=height; j++) {
+			//addFact("isRoom(" + i + "," + j + ").");
+		}		
+	}
+	
+	positionX = 0;
+	positionY = height-1;
+	for (var y=0; y<height; y++) {
+		map[y] = new Array(width);
+	}
+	for (var y=0; y<height; y++) {
+		for (var x=0; x<width; x++) {
+			map[y][x] = "";
+		}
+	}
+	
+	/* place the wumpus */
+	var wx = 0; var wy = height-1;
+	while (wx == 0 && wy == height-1) {
+		wx = Math.floor(Math.random()*10);
+		wy = Math.floor(Math.random()*10);
+	}
+	place(wx, wy, WUMPUS);
+	place(wx-1, wy, STENCH);
+	place(wx+1, wy, STENCH);
+	place(wx, wy-1, STENCH);
+	place(wx, wy+1, STENCH);
+	/* place the gold */
+	wx = Math.floor(Math.random()*10);
+	wy = Math.floor(Math.random()*10);
+	place(wx, wy, GOLD);
+	place(wx-1, wy, GLITTER);
+	place(wx+1, wy, GLITTER);
+	place(wx, wy-1, GLITTER);
+	place(wx, wy+1, GLITTER);
+	/* place the pits */
+	for (var y=0; y<height; y++) {
+		for (var x=0; x<width; x++) {
+			if (Math.random() <= 0.2 && (x != 0 || y != height-1)) {
+				place(x, y, PIT);
+				place(x-1, y, BREEZE);
+				place(x+1, y, BREEZE);
+				place(x, y-1, BREEZE);
+				place(x, y+1, BREEZE);
+			}
+		}
+	}
+	
+	renderMap();
+	moveTo(0,height-1);
+}
+
+function place(x, y, what) {
+	if (x < 0 || x > width-1 || y < 0 || y > height-1) return false;
+	if (map[y][x].indexOf(what) == -1) {
+		map[y][x] = map[y][x] + what;
+	} 
+}
+
+function renderMap() {
+	var html = "";
+	html += "<table>";
+	for (var y=0; y<height; y++) {
+		html += "<tr>";
+		for (var x=0; x<width; x++) {
+			id = y+"_"+x;
+			html += "<td id=\"" + id + "\">&nbsp;</td>";
+		}
+		html += "</tr>";
+	}
+	html += "</table>";
+	document.getElementById("map").innerHTML = html;
+
+	for (var y=0; y<height; y++) {
+		for (var x=0; x<width; x++) {
+			renderCell(x,y);
+		}
+	}
+	
+}
+
+function addFact(fact) {
+	if (facts.indexOf(fact) == -1) facts = "asserta(" + fact + ").<br>" + facts;
+}
+
+function renderCell(x, y) {
+	var html = "";
+	id = y + "_" + x;
+	
+	if (!god && !walk[y][x]) {
+		document.getElementById(id).style.backgroundColor = "#ccc";
+		document.getElementById(id).innerHTML = "<img src=\"spacer-grey.jpg\">";
+	} else {
+		document.getElementById(id).style.backgroundColor = "#fff";
+		if (positionX == x && positionY == y) {
+			html += "<img src=\"man-28px.jpg\">";
+		} else {
+			html += "<img src=\"spacer.jpg\">";
+		}
+		
+		if (cellHasItem(x,y,WUMPUS)) {
+			html += "<img src=\"domokun-2-28px.jpg\">";
+		}
+		if (cellHasItem(x,y,STENCH)) {
+			html += "<img src=\"stink.gif\">";
+		}
+		if (cellHasItem(x,y,GOLD)) {
+			html += "<img src=\"gold.jpg\">";
+		}
+		if (cellHasItem(x,y,GLITTER)) {
+			html += "<img src=\"sparkle2-28px.jpg\">";
+		}
+		if (cellHasItem(x,y,PIT)) {
+			html += "<img src=\"crater.jpg\">";
+		}
+		if (cellHasItem(x,y,BREEZE)) {
+			html += "<img src=\"Windy-28px.jpg\">";
+		}
+	
+		document.getElementById(id).innerHTML = html;
+	}
+		
+}
+
+function cellHasItem(x,y,item) {
+	if (map[y][x].indexOf(item) > -1) return true;
+	else return false;
+}
+
+function keypress(event) {
+	var key = window.event ? event.keyCode : event.which;
+	if (key == 105) moveTo(positionX, positionY-1);
+	else if (key == 106) moveTo(positionX-1, positionY);
+	else if (key == 107) moveTo(positionX, positionY+1);
+	else if (key == 108) moveTo(positionX+1, positionY);
+}
+
+function moveTo(x,y) {
+	debugClear();
+	if (gameOver) return;
+	if (x < 0 || x > width-1 || y < 0 || y > height-1) return false;
+	walk[y][x] = true;
+	
+	oldX = positionX; oldY = positionY;
+	positionX = x; positionY = y;
+	renderCell(oldX, oldY);
+	renderCell(x,y);
+
+	var html = "We are in room [" + x + "," + y + "].  Use the [I, J, K, and L] keys on your keyboard to move your player.<br>";
+	addFact("visited(" + x + ", " + y + ")");
+	var ax = x; var ay = y;
+/*	if (ax-1 > 0) {
+		addFact("adjacent(" + (ax-1) + ", " + y + ", " + ax + ", " + y + ").");
+		addFact("adjacent(" + ax + ", " + y + ", " + (ax-1) + ", " + y + ").");
+	}
+	if (ax+1 < width) {
+		addFact("adjacent(" + (ax+1) + ", " + y + ", " + ax + ", " + y + ").");
+		addFact("adjacent(" + ax + ", " + y + ", " + (ax+1) + ", " + y + ").");
+	}
+	if (ay-1 > 0) {
+		addFact("adjacent(" + ax + ", " + (y-1) + ", " + ax + ", " + y + ").");
+		addFact("adjacent(" + ax + ", " + y + ", " + ax + ", " + (y-1) + ").");
+	}
+	if (ay+1 < height) {
+		addFact("adjacent(" + ax + ", " + (y+1) + ", " + ax + ", " + y + ").");
+		addFact("adjacent(" + ax + ", " + y + ", " + ax + ", " + (y+1) + ").");
+	}
+	*/
+	
+	if (cellHasItem(x,y,WUMPUS)) {
+		html += "The wumpus ate you!  Game over.  <a href=\"javascript:gameOver=false; moveTo(0,height-1)\">Click here to try again</a>.  Or, <a href=\"javascript:init()\">Click here to play again with a new Wumpus World</a>.<br>";
+		gameOver = true;
+		addFact("wumpus(" + x + "," + y + ")");
+		renderRules();
+		info(html);
+		return;
+	} //else addFact("nowumpus(" + x + "," + y + ")");
+	if (cellHasItem(x,y,STENCH)) {
+		html += "Something smells nasty.  There is a wumpus nearby.  ";
+		addFact("stench(" + x + "," + y + ")");
+	} //else addFact("nostench(" + x + "," + y + ")");
+	if (cellHasItem(x,y,PIT)) {
+		html += "You fell into a bottomless pit.  Game over.  <a href=\"javascript:gameOver=false; moveTo(0,height-1)\">Click here to try again</a>.  Or, <a href=\"javascript:init()\">Click here to play again with a new Wumpus World</a>.<br>";
+		gameOver = true;
+		info(html);
+		return;
+	} //else addFact("nopit(" + x + "," + y + ")");
+	if (cellHasItem(x,y,GOLD)) {
+		html += "You got the bling!  <a href=\"javascript:init()\">Click here to play again with a new Wumpus World</a>.<br>";
+		gameOver = true;
+		info(html);
+		return;
+	} //else addFact("nogold(" + x + "," + y + ")");
+	if (cellHasItem(x,y,BREEZE)) {
+		html += "Hmm, it's windy in this room.  There must be a pit nearby.  ";
+		addFact("breeze(" + x + "," + y + ")");
+	} //else addFact("nobreeze(" + x + "," + y + ")");
+	
+	if (cellHasItem(x,y,GLITTER)) {
+		html += "There is glitter in this room.  That means there is bling nearby.  ";
+		addFact("glitter(" + x + "," + y + ")");
+	} //else addFact("noglitter(" + x + "," + y + ")");
+	
+	info(html);
+	renderRules();
+	
+	var query = "<u>Useful queries from here</u>:<br>";
+	var chunk;
+	if (x < width-1) { // east
+		query += "/* east */<br>";
+		chunk = "(" + (x+1) + ", " + y + "),!.<br>";
+		query += "safe" + chunk;
+		query += "unsafe" + chunk;
+		query += "deadly" + chunk;
+		query += "useless" + chunk;
+		query += "promising" + chunk;
+		query += "golden" + chunk;
+	}
+	if (x > 0) { // west
+		query += "/* west */<br>";
+		chunk = "(" + (x-1) + ", " + y + "),!.<br>";
+		query += "safe" + chunk;
+		query += "unsafe" + chunk;
+		query += "deadly" + chunk;
+		query += "useless" + chunk;
+		query += "promising" + chunk;
+		query += "golden" + chunk;
+	}
+	if (y < height-1) { // south
+		query += "/* south */<br>";
+		chunk = "(" + x + ", " + (y+1) + "),!.<br>";
+		query += "safe" + chunk;
+		query += "unsafe" + chunk;
+		query += "deadly" + chunk;
+		query += "useless" + chunk;
+		query += "promising" + chunk;
+		query += "golden" + chunk;
+	}
+	if (y > 0) { // north
+		query += "/* north */<br>";
+		chunk = "(" + x + ", " + (y-1) + "),!.<br>";
+		query += "safe" + chunk;
+		query += "unsafe" + chunk;
+		query += "deadly" + chunk;
+		query += "useless" + chunk;
+		query += "promising" + chunk;
+		query += "golden" + chunk;
+	}
+	document.getElementById("query").innerHTML = query;
+	
+}
+
+function renderRules() {
+	document.getElementById("rules").innerHTML = "<u>Prolog knowledge base</u>:<br>" + facts;
+}
+
+function info(html) {
+	document.getElementById("info").innerHTML = html;
+}
+
+
+function infer(q) {
+	t1 = new Date();
+	document.input.query.value = q;
+	freeform();
+	debug("infer " + q + " took " + (new Date().getTime() - t1.getTime()) + "<br>");
+	if (document.output.output.value.indexOf("true") > -1) return true; else return false;
+}
+
+function debug(msg) {
+	document.getElementById("debug").innerHTML += msg;
+}
+function debugClear() {
+	document.getElementById("debug").innerHTML = "";
+}
+
+</script>
+
+<style>
+	table {border-collapse: collapse;}
+	td {border: thin solid black; padding: 5px 5px 5px 5px;}
+	#info {font-family: verdana arial; font-weight:bold; margin-top: 10px; }
+	#rules {font-family: courier; font-size: 10pt;}
+	#query {font-family: courier; font-size: 10pt;}
+</style>
+
+</head><body onload="init()" onkeypress="return keypress(event)">
+
+<div id="map"></div>
+<table border="0">
+	<tr valign="top">
+		<td colspan="2" style="border: none">
+			<div id="info"></div>
+		</td>
+	</tr>
+	<tr valign="top">
+		<td style="border: none">
+			<div id="rules"></div>
+		</td>
+		<td style="border: none">
+			<div id="query"></div>
+		</td>
+	</tr>
+</table>
+<div id="debug"></div>
+So, you want to cheat?  OK, then. <a style="color: grey" href="javascript:god=!god;renderMap();">Toggle god mode</a> to see what you're missing.
+
+
+</body></html>

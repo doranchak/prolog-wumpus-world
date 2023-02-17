@@ -1,0 +1,358 @@
+<html><head><title></title>
+
+<script type="text/javascript" src="prolog.js">
+</script>
+
+<script type="text/javascript">
+var width=10;
+var height=10;
+
+var map;
+var positionX;
+var positionY;
+
+var WUMPUS = "w";
+var GOLD = "g";
+var PIT = "p";
+var STENCH = "s";
+var GLITTER = "l";
+var BREEZE = "b";
+
+var gameOver = false;
+
+var wumpusRules;
+var startRules = 
+		"# Arithmetic \n" + 
+		"add(A, B, C) :- external(\"$1 + $2\", [A, B], C).   # A + B = C, etc. \n" + 
+		"sub(A, B, C) :- external(\"$1 - $2\", [A, B], C). \n" + 
+		"mul(A, B, C) :- external(\"$1 * $2\", [A, B], C). \n" + 
+		"div(A, B, C) :- external(\"$1 / $2\", [A, B], C). \n" + 
+    " \n" + 
+		"leq(X, Y) :- compare(X, Y, gt). \n" + 
+		"leq(X, Y) :- compare(X, Y, eq). \n" + 
+		"gtr(X, Y) :- compare(X, Y, lt). \n" + 
+    "   \n" + 
+		"# Standard prolog not/1 \n" + 
+		"not(Term) :- call(Term), !, fail. \n" + 
+		"not(Term). \n" + 
+    " \n" + 
+		"adjacent1(X1, Y1, X2, Y2) :- sub(X1, X2, 1), compare(Y1, Y2, eq). \n" + 
+		"adjacent2(X1, Y1, X2, Y2) :- sub(X2, X1, 1), compare(Y1, Y2, eq). \n" + 
+		"adjacent3(X1, Y1, X2, Y2) :- sub(Y1, Y2, 1), compare(X1, X2, eq). \n" + 
+		"adjacent4(X1, Y1, X2, Y2) :- sub(Y2, Y1, 1), compare(X1, X2, eq). \n" + 
+//		"adjacent2(X1, Y1, X2, Y2) :- isRoom(X1, Y1), isRoom(X2, Y2), sub(X2, X1, 1), compare(Y1, Y2, eq). \n" + 
+//		"adjacent3(X1, Y1, X2, Y2) :- isRoom(X1, Y1), isRoom(X2, Y2), sub(Y1, Y2, 1), compare(X1, X2, eq).  \n" + 
+//		"adjacent4(X1, Y1, X2, Y2) :- isRoom(X1, Y1), isRoom(X2, Y2), sub(Y2, Y1, 1), compare(X1, X2, eq). \n" + 
+//		"adjacent1(X1, Y1, X2, Y2) :- isRoom(X1, Y1), isRoom(X2, Y2), sub(X1, X2, 1), compare(Y1, Y2, eq).  \n" + 
+
+		"adjacent(X1, Y1, X2, Y2) :- adjacent1(X1, Y1, X2, Y2). \n" + 
+		"adjacent(X1, Y1, X2, Y2) :- adjacent2(X1, Y1, X2, Y2). \n" + 
+		"adjacent(X1, Y1, X2, Y2) :- adjacent3(X1, Y1, X2, Y2). \n" + 
+		"adjacent(X1, Y1, X2, Y2) :- adjacent4(X1, Y1, X2, Y2). \n" 
+
+//		"breeze(X1, Y1) :- pit(X2, Y2), adjacent(X1, Y1, X2, Y2). \n" +
+//		"stench(X1, Y1) :- wumpus(X2, Y2), adjacent(X1, Y1, X2, Y2). \n" +
+//		"glitter(X1, Y1) :- isRoom(X1, Y1), isRoom(X2, Y2), gold(X2, Y2), adjacent(X1, Y1, X2, Y2). \n" +
+		
+		//"pit(X1, Y1) :- adjacent1(X1, Y1, X2, Y2), adjacent2(X1, Y1, X3, Y3), adjacent3(X1, Y1, X4, Y4), adjacent4(X1, Y1, X5, Y5). \n";
+		//"nopit(X1, Y1) :- adjacent(X1, Y1, X2, Y2), nobreeze(X2, Y2). \n";
+		//"safe(X, Y) :- not(nopit(X, Y)), not(nowumpus(X, Y)). \n";
+		//"nowumpus(X1, Y1) :- adjacent(X1, Y1, X2, Y2), nowumpus(X2, Y2). \n";
+
+var facts;
+
+function init() {
+	gameOver = false;
+	map = new Array(height);
+	
+	facts = new Array();
+
+	for (i=1; i<=width; i++) {
+		for (j=1; j<=height; j++) {
+			//addFact("isRoom(" + i + "," + j + ").");
+		}		
+	}
+		
+	
+	positionX = 0;
+	positionY = height-1;
+	for (var y=0; y<height; y++) {
+		map[y] = new Array(width);
+	}
+	for (var y=0; y<height; y++) {
+		for (var x=0; x<width; x++) {
+			map[y][x] = "";
+		}
+	}
+	
+	/* place the wumpus */
+	var wx = 0; var wy = height-1;
+	while (wx == 0 && wy == height-1) {
+		wx = Math.floor(Math.random()*10);
+		wy = Math.floor(Math.random()*10);
+	}
+	place(wx, wy, WUMPUS);
+	place(wx-1, wy, STENCH);
+	place(wx+1, wy, STENCH);
+	place(wx, wy-1, STENCH);
+	place(wx, wy+1, STENCH);
+	/* place the gold */
+	wx = Math.round(Math.random()*10);
+	wy = Math.round(Math.random()*10);
+	place(wx, wy, GOLD);
+	place(wx-1, wy, GLITTER);
+	place(wx+1, wy, GLITTER);
+	place(wx, wy-1, GLITTER);
+	place(wx, wy+1, GLITTER);
+	/* place the pits */
+	for (var y=0; y<height; y++) {
+		for (var x=0; x<width; x++) {
+			if (Math.random() <= 0.2 && (x != 0 || y != height-1)) {
+				place(x, y, PIT);
+				place(x-1, y, BREEZE);
+				place(x+1, y, BREEZE);
+				place(x, y-1, BREEZE);
+				place(x, y+1, BREEZE);
+			}
+		}
+	}
+	
+	renderMap();
+	moveTo(0,height-1);
+}
+
+function place(x, y, what) {
+	if (x < 0 || x > width-1 || y < 0 || y > height-1) return false;
+	if (map[y][x].indexOf(what) == -1) {
+		map[y][x] = map[y][x] + what;
+	} 
+}
+
+function renderMap() {
+	var html = "";
+	html += "<table>";
+	for (var y=0; y<height; y++) {
+		html += "<tr>";
+		for (var x=0; x<width; x++) {
+			id = y+"_"+x;
+			html += "<td id=\"" + id + "\">&nbsp;</td>";
+		}
+		html += "</tr>";
+	}
+	html += "</table>";
+	document.getElementById("map").innerHTML = html;
+
+	for (var y=0; y<height; y++) {
+		for (var x=0; x<width; x++) {
+			renderCell(x,y);
+		}
+	}
+	
+}
+
+function addFact(fact) {
+	facts[fact] = fact;
+	wumpusRules = startRules;
+	for (var f in facts) {
+		wumpusRules += "\n" + f;
+	}
+}
+
+function renderCell(x, y) {
+	var html = "";
+	
+	if (positionX == x && positionY == y) {
+		html += "<img src=\"man-28px.jpg\">";
+	} else {
+		html += "<img src=\"spacer.jpg\">";
+	}
+		
+	if (cellHasItem(x,y,WUMPUS)) {
+		html += "<img src=\"domokun-2-28px.jpg\">";
+	}
+	if (cellHasItem(x,y,STENCH)) {
+		html += "<img src=\"stink.gif\">";
+	}
+	if (cellHasItem(x,y,GOLD)) {
+		html += "<img src=\"gold.jpg\">";
+	}
+	if (cellHasItem(x,y,GLITTER)) {
+		html += "<img src=\"sparkle2-28px.jpg\">";
+	}
+	if (cellHasItem(x,y,PIT)) {
+		html += "<img src=\"crater.jpg\">";
+	}
+	if (cellHasItem(x,y,BREEZE)) {
+		html += "<img src=\"Windy-28px.jpg\">";
+	}
+	
+	id = y + "_" + x;
+	document.getElementById(id).innerHTML = html;
+		
+}
+
+function cellHasItem(x,y,item) {
+	if (map[y][x].indexOf(item) > -1) return true;
+	else return false;
+}
+
+function keypress(event) {
+	var key = window.event ? event.keyCode : event.which;
+	if (key == 105) moveTo(positionX, positionY-1);
+	else if (key == 106) moveTo(positionX-1, positionY);
+	else if (key == 107) moveTo(positionX, positionY+1);
+	else if (key == 108) moveTo(positionX+1, positionY);
+}
+
+function moveTo(x,y) {
+	debugClear();
+	if (gameOver) return;
+	if (x < 0 || x > width-1 || y < 0 || y > height-1) return false;
+	
+	oldX = positionX; oldY = positionY;
+	positionX = x; positionY = y;
+	renderCell(oldX, oldY);
+	renderCell(x,y);
+
+	var html = "We are in room [" + x + "," + y + "].<br>";
+	
+	var ax = x; var ay = y;
+/*	if (ax-1 > 0) {
+		addFact("adjacent(" + (ax-1) + ", " + y + ", " + ax + ", " + y + ").");
+		addFact("adjacent(" + ax + ", " + y + ", " + (ax-1) + ", " + y + ").");
+	}
+	if (ax+1 < width) {
+		addFact("adjacent(" + (ax+1) + ", " + y + ", " + ax + ", " + y + ").");
+		addFact("adjacent(" + ax + ", " + y + ", " + (ax+1) + ", " + y + ").");
+	}
+	if (ay-1 > 0) {
+		addFact("adjacent(" + ax + ", " + (y-1) + ", " + ax + ", " + y + ").");
+		addFact("adjacent(" + ax + ", " + y + ", " + ax + ", " + (y-1) + ").");
+	}
+	if (ay+1 < height) {
+		addFact("adjacent(" + ax + ", " + (y+1) + ", " + ax + ", " + y + ").");
+		addFact("adjacent(" + ax + ", " + y + ", " + ax + ", " + (y+1) + ").");
+	}
+	*/
+	
+	if (cellHasItem(x,y,WUMPUS)) {
+		html += "The wumpus ate you!  Game over.  <a href=\"javascript:init()\">Click here to play again.</a><br>";
+		gameOver = true;
+		info(html);
+		return;
+	} else addFact("nowumpus(" + x + "," + y + ").");
+	if (cellHasItem(x,y,STENCH)) {
+		html += "Something smells nasty.  There is a wumpus nearby.  ";
+		addFact("stench(" + x + "," + y + ").");
+	} else addFact("nostench(" + x + "," + y + ").");
+	if (cellHasItem(x,y,PIT)) {
+		html += "You fell into a bottomless pit.  Game over.  <a href=\"javascript:init()\">Click here to play again.</a><br>";
+		gameOver = true;
+		info(html);
+		return;
+	} else addFact("nopit(" + x + "," + y + ").");
+	if (cellHasItem(x,y,GOLD)) {
+		html += "You got the bling!<br>";
+		gameOver = true;
+		info(html);
+		return;
+	} else addFact("nogold(" + x + "," + y + ").");
+	if (cellHasItem(x,y,BREEZE)) {
+		html += "Hmm, it's windy in this room.  There must be a pit nearby.  ";
+		addFact("breeze(" + x + "," + y + ").");
+	} else addFact("nobreeze(" + x + "," + y + ").");
+	
+	if (cellHasItem(x,y,GLITTER)) {
+		html += "There is glitter in this room.  That means there is bling nearby.  ";
+		addFact("glitter(" + x + "," + y + ").");
+	} else addFact("noglitter(" + x + "," + y + ").");
+	
+	if (x>0) {
+		if (infer("nopit("+(x-1)+", "+y+")."))
+			html += "There is definitely no pit to the West.  ";
+		if (infer("safe("+(x-1)+", "+y+")."))
+			html += "The room to the West is safe.  ";
+	}	
+
+	if (x<width-1) {
+		if (infer("nopit("+(x+1)+", "+y+")."))
+			html += "There is definitely no pit to the East.  ";
+		if (infer("safe("+(x+1)+", "+y+")."))
+			html += "The room to the East is safe.  ";
+	}
+
+	if (y>0) {
+		if (infer("nopit("+x+", "+(y-1)+")."))
+			html += "There is definitely no pit to the North.  ";
+		if (infer("safe("+x+", "+(y-1)+")."))
+			html += "The room to the North is safe.  ";
+	}
+
+	if (y<height-1) {
+		if (infer("nopit("+x+", "+(y+1)+")."))
+			html += "There is definitely no pit to the South.  ";
+		if (infer("safe("+x+", "+(y+1)+")."))
+			html += "The room to the South is safe.  ";
+	}
+	
+	html += "Ruleset now has length " + wumpusRules.length + ".  ";
+//	html += wumpusRules;
+	info(html);
+}
+
+function info(html) {
+	document.getElementById("info").innerHTML = html;
+}
+
+
+function infer(q) {
+	t1 = new Date();
+	document.input.query.value = q;
+	freeform();
+	debug("infer " + q + " took " + (new Date().getTime() - t1.getTime()) + "<br>");
+	if (document.output.output.value.indexOf("true") > -1) return true; else return false;
+}
+
+function debug(msg) {
+	document.getElementById("debug").innerHTML += msg;
+}
+function debugClear() {
+	document.getElementById("debug").innerHTML = "";
+}
+
+</script>
+
+<style>
+	table {border-collapse: collapse;}
+	td {border: thin solid black; padding: 5px 5px 5px 5px;}
+	#info {font-family: verdana arial; font-weight:bold; margin-top: 10px; }
+</style>
+
+</head><body onload="init()" onkeypress="return keypress(event)">
+
+<div id="map"></div>
+<div id="info"></div>
+<div id="debug"></div>
+<form name="rules" action="javascript:return false;"><p>
+
+<textarea disabled="true" cols="80" rows="20" name="rules">
+</textarea></p>
+</form>
+<form name="input" action="javascript:freeform(); //">
+<p>	Enter your query:
+</p>
+<p>	<input name="query" size="90" type="text">
+</p>
+<p>
+	<input value="Run query" onclick="freeform(); return true;" type="button">
+	<input name="showparse" type="checkbox"> Show parse results
+</p>
+</form>
+<form name="output" action="javascript:return false;">
+<p>
+<textarea rows="40" cols="90" name="output"></textarea>
+
+</p>
+
+</form>
+</body></html>
